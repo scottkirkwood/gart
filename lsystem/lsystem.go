@@ -29,7 +29,7 @@ var (
 )
 
 func main() {
-	seed := gart.InitSeed()
+	seed := gart.Init()
 	ctx := gg.NewContext(width, height)
 	ctx.SetColor(color.Gray{245})
 	ctx.Clear()
