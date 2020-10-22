@@ -1,4 +1,4 @@
-package seed
+package gart
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ type Seed struct {
 	intSeed int64
 }
 
-func newSeed() Seed {
+func newSeed() SeedSeed {
 	intSeed := time.Now().UnixNano()
 	rand.Seed(intSeed)
 	return Seed{intSeed}

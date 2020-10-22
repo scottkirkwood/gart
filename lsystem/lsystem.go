@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/fogleman/gg"
-	"github.com/scottkirkwood/gart/seed"
+	"github.com/scottkirkwood/gart"
 )
 
 const (
@@ -29,7 +29,7 @@ var (
 )
 
 func main() {
-	seed := seed.Init()
+	seed := gart.InitSeed()
 	ctx := gg.NewContext(width, height)
 	ctx.SetColor(color.Gray{245})
 	ctx.Clear()
