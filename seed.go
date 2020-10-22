@@ -1,8 +1,9 @@
-package gart
+package seed
 
 import (
-	"exec"
-	"math"
+	"fmt"
+	"math/rand"
+	"os/exec"
 	"time"
 )
 
@@ -11,9 +12,9 @@ type Seed struct {
 	intSeed int64
 }
 
-func init() Seed {
+func newSeed() Seed {
 	intSeed := time.Now().UnixNano()
-	math.SetSeed(intSeed)
+	rand.Seed(intSeed)
 	return Seed{intSeed}
 }
 
@@ -31,9 +32,9 @@ func getGitHash() string {
 }
 
 func (s Seed) getSeed() int64 {
-	return intSeed
+	return s.intSeed
 }
 
 func (s Seed) getFilename(prefix, ext string) string {
-	return fmt.Sprintf("%s%s-%x%s", prefix, getGitHash(), f.intSeed, ext)
+	return fmt.Sprintf("%s%s-%x%s", prefix, getGitHash(), s.intSeed, ext)
 }
