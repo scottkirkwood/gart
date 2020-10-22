@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/fogleman/gg"
+	"github.com/scottkirkwood/gart/seed"
 )
 
 const (
@@ -28,6 +29,7 @@ var (
 )
 
 func main() {
+	seed := seed.Init()
 	ctx := gg.NewContext(width, height)
 	ctx.SetColor(color.Gray{245})
 	ctx.Clear()
@@ -38,7 +40,7 @@ func main() {
 	f.generate()
 	f.draw()
 
-	fname := "/tmp/output.png"
+	fname := seed.GetFilename("/tmp/", ".png")
 	fmt.Printf("Saved to %s\n", fname)
 	ctx.SavePNG(fname)
 }
