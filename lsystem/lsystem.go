@@ -3,6 +3,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image/color"
 	"math"
@@ -22,14 +23,20 @@ const (
 )
 
 var (
-	rules = []string{
+	seedFlag = flag.String("seed", "", "Hex value for the seed to use")
+	rules    = []string{
 		"f→ ff",
 		"x→ x[-x]f+[[x]-x]-f[-fx]+x",
 	}
 )
 
 func main() {
-	seed := gart.Init()
+	flag.Parse()
+	g, err := gart.Init(*seedFlag)
+	if err != nil {
+		fmt.Printf("Unable to set the seed: %v\n", err)
+	}
+
 	ctx := gg.NewContext(width, height)
 	ctx.SetColor(color.Gray{245})
 	ctx.Clear()
@@ -40,9 +47,10 @@ func main() {
 	f.generate()
 	f.draw()
 
-	fname := seed.GetFilename("/tmp/", ".png")
-	fmt.Printf("Saved to %s\n", fname)
-	ctx.SavePNG(fname)
+	if err := g.SafeWrite(ctx, "lsystem-", ".png"); err != nil {
+		fmt.Printf("Unable write image: %v\n", err)
+		return
+	}
 }
 
 type fractal struct {

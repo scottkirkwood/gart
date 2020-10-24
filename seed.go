@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -16,11 +17,17 @@ type Seed struct {
 // Jan 1, 2020 (to make filenames a little smaller)
 const epoch2020 = 1577836800
 
-// Init initializes the seed (so far)
-func Init() Seed {
+// Init initializes the seed
+// `hexSeed` is either the empty string or a hex value
+func Init(hexSeed string) (Seed, error) {
 	intSeed := time.Now().UnixNano() - epoch2020
-	rand.Seed(intSeed)
-	return Seed{intSeed}
+	s := Seed{intSeed: intSeed}
+	if hexSeed != "" {
+		err := s.SetSeed(hexSeed)
+		return s, err
+	}
+	rand.Seed(s.intSeed)
+	return s, nil
 }
 
 // GetSeed returns the rand initialization seed
@@ -29,12 +36,13 @@ func (s Seed) GetSeed() int64 {
 }
 
 // SetSeed sets the seed given the file seed part of filename
-func (s Seed) SetSeed(hexSeed string) error {
-	s.intSeed, err = strconv.ParseUint(hexSeed, 16, 64)
+func (s Seed) SetSeed(hexSeed string) (err error) {
+	s.intSeed, err = strconv.ParseInt(hexSeed, 16, 64)
 	if err != nil {
 		return err
 	}
 	rand.Seed(s.intSeed)
+	return nil
 }
 
 // GetFilename returns a string to use for this file
