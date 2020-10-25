@@ -16,9 +16,9 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/scottkirkwood/gart"
 	"golang.org/x/exp/shiny/driver"
 	"golang.org/x/exp/shiny/screen"
 	_ "golang.org/x/image/bmp"
@@ -184,7 +184,7 @@ func hasMain(fname string) (bool, error) {
 func startDriver(fname string) {
 	driver.Main(func(s screen.Screen) {
 		// Decode all images (in parallel).
-		_, imgs := decodeImages([]string{fname})
+		_, imgs := gart.DecodeImages([]string{fname})
 
 		// Return now if we don't have any images!
 		if len(imgs) == 0 {
@@ -283,7 +283,7 @@ func startDriver(fname string) {
 			case paint.Event:
 				img := imgs[i]
 				draw.Draw(b.RGBA(), b.Bounds(), img, image.Point{}, draw.Src)
-				dp := vpCenter(img, sz.WidthPx, sz.HeightPx)
+				dp := gart.VpCenter(img, sz.WidthPx, sz.HeightPx)
 				zero := image.Point{}
 				if dp != zero {
 					w.Fill(sz.Bounds(), color.Black, draw.Src)
@@ -307,99 +307,4 @@ func startDriver(fname string) {
 			}
 		}
 	})
-}
-
-// decodeImages takes a list of image files and decodes them into image.Image
-// types. Note that the number of images returned may not be the number of
-// image files passed in. Namely, an image file is skipped if it cannot be
-// read or deocoded into an image type that Go understands.
-func decodeImages(imageFiles []string) ([]string, []image.Image) {
-	// A temporary type used to transport decoded images over channels.
-	type tmpImage struct {
-		img  image.Image
-		name string
-	}
-
-	// Decoded all images specified in parallel.
-	imgChans := make([]chan tmpImage, len(imageFiles))
-	for i, fName := range imageFiles {
-		imgChans[i] = make(chan tmpImage, 0)
-		go func(i int, fName string) {
-			file, err := os.Open(fName)
-			if err != nil {
-				fmt.Println(err)
-				close(imgChans[i])
-				return
-			}
-
-			start := time.Now()
-			img, kind, err := image.Decode(file)
-			if err != nil {
-				fmt.Printf("Could not decode '%s' into a supported image "+
-					"format: %s\n", fName, err)
-				close(imgChans[i])
-				return
-			}
-			fmt.Printf("Decoded '%s' into image type '%s' (%s).\n",
-				fName, kind, time.Since(start))
-
-			imgChans[i] <- tmpImage{
-				img:  img,
-				name: basename(fName),
-			}
-		}(i, fName)
-	}
-
-	// Now collect all the decoded images into a slice of names and a slice
-	// of images.
-	names := make([]string, 0)
-	imgs := make([]image.Image, 0)
-	for _, imgChan := range imgChans {
-		if tmpImg, ok := <-imgChan; ok {
-			names = append(names, tmpImg.name)
-			imgs = append(imgs, tmpImg.img)
-		}
-	}
-
-	return names, imgs
-}
-
-// vpCenter inspects the canvas and image geometry, and determines where the
-// origin of the image should be painted into the canvas.
-// If the image is bigger than the canvas, this is always (0, 0).
-// If the image is the same size, then it is also (0, 0).
-// If a dimension of the image is smaller than the canvas, then:
-// x = (canvas_width - image_width) / 2 and
-// y = (canvas_height - image_height) / 2
-func vpCenter(ximg image.Image, canWidth, canHeight int) image.Point {
-	xmargin, ymargin := 0, 0
-	if ximg.Bounds().Dx() < canWidth {
-		xmargin = (canWidth - ximg.Bounds().Dx()) / 2
-	}
-	if ximg.Bounds().Dy() < canHeight {
-		ymargin = (canHeight - ximg.Bounds().Dy()) / 2
-	}
-	return image.Point{xmargin, ymargin}
-}
-
-// basename retrieves the basename of a file path.
-func basename(fName string) string {
-	if lslash := strings.LastIndex(fName, "/"); lslash != -1 {
-		fName = fName[lslash+1:]
-	}
-	return fName
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
