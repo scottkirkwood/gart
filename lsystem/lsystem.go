@@ -14,12 +14,12 @@ import (
 )
 
 const (
-	width      = 1500                // pixels
+	width      = 1200                // pixels
 	height     = width * (728 / 383) // pixels
 	maxDepth   = 7
 	dist       = 6    // pixels
 	angleLeft  = 8.78 // degrees
-	angleRight = 2.7  // degrees
+	angleRight = 2.7  // ditto
 )
 
 var (
