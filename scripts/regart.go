@@ -16,6 +16,8 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/scottkirkwood/gart"
@@ -32,7 +34,9 @@ import (
 
 var (
 	fileCrc         map[string]uint64
+	fileCrcMux      sync.Mutex
 	goFileToCompile string
+	driverCount     int32
 )
 
 func main() {
@@ -44,6 +48,7 @@ func main() {
 
 	fileCrc = make(map[string]uint64, 0)
 	done := make(chan bool)
+	newImgChan := make(chan string)
 
 	folder := ""
 	goFileToCompile, err = findMainGo(folder)
@@ -52,7 +57,8 @@ func main() {
 		return
 	}
 
-	go watchForEvents(watcher)
+	go watchForEvents(watcher, newImgChan)
+	go maybeStartDriver(newImgChan)
 
 	// out of the box fsnotify can watch a single file, or a single directory
 	if err := watcher.Add(folder); err != nil {
@@ -66,7 +72,7 @@ func main() {
 	<-done
 }
 
-func watchForEvents(watcher *fsnotify.Watcher) {
+func watchForEvents(watcher *fsnotify.Watcher, newImgChan chan string) {
 	for {
 		select {
 		case event, ok := <-watcher.Events:
@@ -76,7 +82,7 @@ func watchForEvents(watcher *fsnotify.Watcher) {
 			if event.Op&fsnotify.Write == fsnotify.Write {
 				go compileOne(event.Name)
 			} else if event.Op&fsnotify.Create == fsnotify.Create {
-				go newFile(event.Name)
+				go newFile(event.Name, newImgChan)
 			} else if event.Op&fsnotify.Rename == fsnotify.Write {
 				//fmt.Println("renamed file:", event.Name)
 			}
@@ -110,13 +116,13 @@ func compileOne(fname string) {
 	}
 }
 
-func newFile(fname string) {
-	// Add new file to the list?
-	fileChanged(fname)
+func newFile(fname string, newImgChan chan string) {
+	fileChanged(fname) // changed is new, right?
 	if !strings.HasSuffix(fname, ".png") {
 		return
 	}
-	startDriver(fname)
+	maybeStartDriver(newImgChan)
+	newImgChan <- fname
 }
 
 var onlyDigitsRx = regexp.MustCompile(`\d+`)
@@ -126,6 +132,10 @@ func fileChanged(fname string) bool {
 		// Ignore temp files by vim which have only digits
 		return false
 	}
+
+	fileCrcMux.Lock()
+	defer fileCrcMux.Unlock()
+
 	checksum := fileCrc[fname]
 	newChecksum := fileChecksum(fname)
 	if newChecksum == checksum {
@@ -181,26 +191,16 @@ func hasMain(fname string) (bool, error) {
 	return packageMainRx.Match(bytes), nil
 }
 
-func startDriver(fname string) {
+func maybeStartDriver(newImgChan chan string) {
+	if !atomic.CompareAndSwapInt32(&driverCount, 0, 1) {
+		fmt.Printf("driver already started\n")
+		return
+	}
+	fmt.Printf("starting driver\n")
 	driver.Main(func(s screen.Screen) {
-		// Decode all images (in parallel).
-		_, imgs := gart.DecodeImages([]string{fname})
+		defer atomic.StoreInt32(&driverCount, 0)
 
-		// Return now if we don't have any images!
-		if len(imgs) == 0 {
-			fmt.Printf("No images specified could be shown.\n")
-			return
-		}
-
-		// Auto-size the window with first image
-		rect := imgs[0].Bounds()
-		winSize := image.Point{rect.Dx(), rect.Dy()}
-		if winSize.X > 1000 {
-			winSize.X = 1000
-		}
-		if winSize.Y > 768 {
-			winSize.Y = 768
-		}
+		winSize := image.Point{1024, 768}
 
 		w, err := s.NewWindow(&screen.NewWindowOptions{
 			Width:  winSize.X,
@@ -212,6 +212,23 @@ func startDriver(fname string) {
 		}
 		defer w.Release()
 
+		// Watch the newImg chan and then them as events
+		done := make(chan bool)
+		go func(newImgChan chan string, done chan bool) {
+			for {
+				select {
+				case img := <-newImgChan:
+					w.Send(img)
+				case <-done:
+					return
+				}
+			}
+		}(newImgChan, done)
+		defer func() {
+			done <- true
+			close(done)
+		}()
+
 		b, err := s.NewBuffer(winSize)
 		if err != nil {
 			fmt.Println(err)
@@ -221,74 +238,63 @@ func startDriver(fname string) {
 
 		w.Fill(b.Bounds(), color.White, draw.Src)
 		w.Publish()
-
+		var imgs []image.Image
 		var sz size.Event
 		var i int // index of image to display
+
 		for {
 			e := w.NextEvent()
+			repaint := false
 			switch e := e.(type) {
+			case string:
+				fmt.Printf("New image %s\n", e)
+				_, imgs = gart.DecodeImages([]string{e})
+				if len(imgs) > 0 {
+					r := imgs[i].Bounds()
+					sz.HeightPx = r.Dy()
+					sz.WidthPx = r.Dx()
+					repaint = true
+					b, err = s.NewBuffer(sz.Size())
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
+					w.Publish()
+				}
 			case key.Event:
-				repaint := false
 				switch e.Code {
 				case key.CodeEscape, key.CodeQ:
 					return
-				case key.CodeRightArrow:
-					if e.Direction == key.DirPress {
-						if i == len(imgs)-1 {
-							i = -1
-						}
-						i++
-						repaint = true
-						b.Release()
-						b, err = s.NewBuffer(sz.Size())
-						if err != nil {
-							fmt.Println(err)
-							return
-						}
-					}
-
-				case key.CodeLeftArrow:
-					if e.Direction == key.DirPress {
-						if i == 0 {
-							i = len(imgs)
-						}
-						i--
-						repaint = true
-						b, err = s.NewBuffer(sz.Size())
-						if err != nil {
-							fmt.Println(err)
-							return
-						}
-					}
-
 				case key.CodeR:
-					if e.Direction == key.DirPress {
-						// resize to current image
-						r := imgs[i].Bounds()
-						sz.HeightPx = r.Dy()
-						sz.WidthPx = r.Dx()
-						repaint = true
-						b, err = s.NewBuffer(sz.Size())
-						if err != nil {
-							fmt.Println(err)
-							return
+					if e.Direction == key.DirRelease {
+						fmt.Printf("Refresh\n")
+						if len(imgs) > 0 {
+							// resize to current image
+							r := imgs[i].Bounds()
+							sz.HeightPx = r.Dy()
+							sz.WidthPx = r.Dx()
+							repaint = true
+							b, err = s.NewBuffer(sz.Size())
+							if err != nil {
+								fmt.Println(err)
+								return
+							}
+							w.Publish()
 						}
-						w.Publish()
 					}
-				}
-				if repaint {
-					w.Send(paint.Event{})
 				}
 
 			case paint.Event:
-				img := imgs[i]
-				draw.Draw(b.RGBA(), b.Bounds(), img, image.Point{}, draw.Src)
-				dp := gart.VpCenter(img, sz.WidthPx, sz.HeightPx)
-				zero := image.Point{}
-				if dp != zero {
-					w.Fill(sz.Bounds(), color.Black, draw.Src)
+				if len(imgs) > 0 {
+					img := imgs[i]
+					draw.Draw(b.RGBA(), b.Bounds(), img, image.Point{}, draw.Src)
+					dp := gart.VpCenter(img, sz.WidthPx, sz.HeightPx)
+					zero := image.Point{}
+					if dp != zero {
+						w.Fill(sz.Bounds(), color.Black, draw.Src)
+					}
+					w.Upload(dp, b, b.Bounds())
 				}
-				w.Upload(dp, b, b.Bounds())
 
 			case size.Event:
 				sz = e
@@ -302,8 +308,11 @@ func startDriver(fname string) {
 				fmt.Printf("Screen error: %v\n", e)
 				return
 
-			default:
 			case mouse.Event:
+			default:
+			}
+			if repaint {
+				w.Send(paint.Event{})
 			}
 		}
 	})

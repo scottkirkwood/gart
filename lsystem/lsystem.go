@@ -134,7 +134,7 @@ func (f *fractal) internalGenerate(drawTo func(turtle, int)) {
 			s.angle -= f.angleRight
 		case '[': // push
 			f.stack = append(f.stack, s)
-		case ']': // pop
+		case ']': // pop!
 			s = f.stack[len(f.stack)-1]
 			f.stack = f.stack[:len(f.stack)-1]
 			f.moveTo(s, len(f.stack))
