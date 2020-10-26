@@ -59,6 +59,7 @@ func main() {
 
 	go watchForEvents(watcher, newImgChan)
 	go maybeStartDriver(newImgChan)
+	go compileOne(goFileToCompile)
 
 	// out of the box fsnotify can watch a single file, or a single directory
 	if err := watcher.Add(folder); err != nil {
@@ -117,7 +118,6 @@ func compileOne(fname string) {
 }
 
 func newFile(fname string, newImgChan chan string) {
-	fileChanged(fname) // changed is new, right?
 	if !strings.HasSuffix(fname, ".png") {
 		return
 	}
@@ -193,10 +193,8 @@ func hasMain(fname string) (bool, error) {
 
 func maybeStartDriver(newImgChan chan string) {
 	if !atomic.CompareAndSwapInt32(&driverCount, 0, 1) {
-		fmt.Printf("driver already started\n")
 		return
 	}
-	fmt.Printf("starting driver\n")
 	driver.Main(func(s screen.Screen) {
 		defer atomic.StoreInt32(&driverCount, 0)
 
@@ -212,7 +210,7 @@ func maybeStartDriver(newImgChan chan string) {
 		}
 		defer w.Release()
 
-		// Watch the newImg chan and then them as events
+		// Watch the newImg chan and then turn them into events
 		done := make(chan bool)
 		go func(newImgChan chan string, done chan bool) {
 			for {
@@ -238,63 +236,79 @@ func maybeStartDriver(newImgChan chan string) {
 
 		w.Fill(b.Bounds(), color.White, draw.Src)
 		w.Publish()
-		var imgs []image.Image
-		var sz size.Event
-		var i int // index of image to display
+
+		var (
+			repaint  bool
+			imgs     []image.Image
+			sz       size.Event
+			i        int // index of image to display
+			dragging bool
+			drag     image.Point
+			origin   image.Point
+		)
 
 		for {
+			repaint = false
 			e := w.NextEvent()
-			repaint := false
 			switch e := e.(type) {
 			case string:
-				fmt.Printf("New image %s\n", e)
-				_, imgs = gart.DecodeImages([]string{e})
-				if len(imgs) > 0 {
-					r := imgs[i].Bounds()
-					sz.HeightPx = r.Dy()
-					sz.WidthPx = r.Dx()
-					repaint = true
-					b, err = s.NewBuffer(sz.Size())
-					if err != nil {
-						fmt.Println(err)
-						return
-					}
-					w.Publish()
-				}
+				_, newImgs := gart.DecodeImages([]string{e})
+				imgs = append(imgs, newImgs...)
+				i = gart.MaxInt(len(imgs)-1, 0)
+				b, repaint = redrawImgs(w, s, b, imgs, i, &sz)
 			case key.Event:
 				switch e.Code {
 				case key.CodeEscape, key.CodeQ:
 					return
 				case key.CodeR:
 					if e.Direction == key.DirRelease {
-						fmt.Printf("Refresh\n")
-						if len(imgs) > 0 {
-							// resize to current image
-							r := imgs[i].Bounds()
-							sz.HeightPx = r.Dy()
-							sz.WidthPx = r.Dx()
-							repaint = true
-							b, err = s.NewBuffer(sz.Size())
-							if err != nil {
-								fmt.Println(err)
-								return
-							}
-							w.Publish()
+						b, repaint = redrawImgs(w, s, b, imgs, i, &sz)
+					}
+				case key.CodeRightArrow:
+					if e.Direction == key.DirRelease {
+						if i == len(imgs)-1 {
+							i = -1
 						}
+						i++
+						b, repaint = redrawImgs(w, s, b, imgs, i, &sz)
+					}
+				case key.CodeLeftArrow:
+					if e.Direction == key.DirRelease {
+						if i == 0 {
+							i = len(imgs)
+						}
+						i--
+						b, repaint = redrawImgs(w, s, b, imgs, i, &sz)
 					}
 				}
-
+			case mouse.Event:
+				p := image.Point{X: int(e.X), Y: int(e.Y)}
+				if e.Button == mouse.ButtonLeft && e.Direction != mouse.DirNone {
+					dragging = e.Direction == mouse.DirPress
+					drag = p
+				}
+				if dragging {
+					origin = origin.Sub(p.Sub(drag))
+					drag = p
+					if origin.X < 0 {
+						origin.X = 0
+					}
+					if origin.Y < 0 {
+						origin.Y = 0
+					}
+					repaint = true
+				}
 			case paint.Event:
 				if len(imgs) > 0 {
 					img := imgs[i]
-					draw.Draw(b.RGBA(), b.Bounds(), img, image.Point{}, draw.Src)
 					dp := gart.VpCenter(img, sz.WidthPx, sz.HeightPx)
-					zero := image.Point{}
-					if dp != zero {
+					if dp != image.ZP {
 						w.Fill(sz.Bounds(), color.Black, draw.Src)
 					}
+					draw.Draw(b.RGBA(), b.Bounds(), img, origin, draw.Src)
 					w.Upload(dp, b, b.Bounds())
 				}
+				repaint = false
 
 			case size.Event:
 				sz = e
@@ -306,9 +320,7 @@ func maybeStartDriver(newImgChan chan string) {
 
 			case error:
 				fmt.Printf("Screen error: %v\n", e)
-				return
 
-			case mouse.Event:
 			default:
 			}
 			if repaint {
@@ -316,4 +328,20 @@ func maybeStartDriver(newImgChan chan string) {
 			}
 		}
 	})
+}
+
+func redrawImgs(w screen.Window, s screen.Screen, curBuf screen.Buffer, imgs []image.Image, i int, sz *size.Event) (screen.Buffer, bool) {
+	if len(imgs) == 0 {
+		return curBuf, false
+	}
+	r := imgs[i].Bounds()
+	sz.HeightPx = r.Dy()
+	sz.WidthPx = r.Dx()
+	b, err := s.NewBuffer(sz.Size())
+	if err != nil {
+		fmt.Println(err)
+		return curBuf, false
+	}
+	w.Publish()
+	return b, true
 }
