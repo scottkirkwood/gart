@@ -10,13 +10,14 @@ import (
 	"math/rand"
 
 	"github.com/fogleman/gg"
+	"github.com/lucasb-eyer/go-colorful"
 	"github.com/scottkirkwood/gart"
 )
 
 const (
 	width  = 1024 // pixels
 	height = 768  // pixels
-	cols   = 100
+	cols   = 200
 	deltaY = 10  // pixels
 	muteY  = 0.2 // std of 1/2 height variation
 )
@@ -48,6 +49,10 @@ func draw(ctx *gg.Context) {
 	ypoints := make([]float64, cols)
 	deltaX := float64(width / cols)
 
+	rc := colorful.Hsl(30.0+rand.Float64()*50.0, 0.2+rand.Float64()*0.8, 0.3+rand.Float64()*0.7)
+	hue, sat, light := rc.Hsl()
+	ctx.SetColor(rc)
+
 	maxDy := 0.0
 	for y := 0.0; y < float64(height)+maxDy; y += float64(deltaY) {
 		ctx.MoveTo(0, float64(y))
@@ -56,6 +61,8 @@ func draw(ctx *gg.Context) {
 			maxDy = math.Max(maxDy, ypoints[i])
 
 		}
+		rc = colorful.Hsl(hue, gart.Lerp(sat, 1, y/(height+maxDy)), light)
+		ctx.SetColor(rc)
 		for i := 0; i < cols; i += 2 {
 			if i >= cols-2 {
 				break

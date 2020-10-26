@@ -55,3 +55,8 @@ func ClampInt(cur, low, high int) int {
 	}
 	return cur
 }
+
+// Lerp is a linear interpolation from v0 to v1 where t varies from 0 to 1
+func Lerp(v0, v1, t float64) float64 {
+	return v0*(1-t) + v1*t
+}
