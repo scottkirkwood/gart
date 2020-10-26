@@ -3,6 +3,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"hash/crc64"
 	"image"
@@ -37,6 +38,8 @@ var (
 	fileCrcMux      sync.Mutex
 	goFileToCompile string
 	driverCount     int32
+
+	rerunAlwaysFlag = flag.Bool("rerun_always", true, "Rerun even if code hasn't changed")
 )
 
 func main() {
@@ -98,7 +101,7 @@ func watchForEvents(watcher *fsnotify.Watcher, newImgChan chan string) {
 }
 
 func compileOne(fname string) {
-	if !fileChanged(fname) {
+	if !fileChanged(fname) && !*rerunAlwaysFlag {
 		if strings.HasSuffix(fname, ".go") {
 			fmt.Printf("File %s unchanged\n", fname)
 		}

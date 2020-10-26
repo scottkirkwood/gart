@@ -1,5 +1,6 @@
 // L-system draws a fractal 'plant' using a simple l-system like logo
 // Inspired by github.com/bcongdon/generative-doodles/blob/master/2-27-19
+// Seed is currently unused (fix!)
 package main
 
 import (
