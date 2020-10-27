@@ -2,7 +2,6 @@ language: go
 
 script:
     - go vet -v ./
-    - go vet -v scripts/
-    - go vet -v l-system/
-    - go vet -v horzlines/
-
+    - go vet -v scripts/*.go
+    - go vet -v lsystem/*.go
+    - go vet -v horzlines/*.go
