@@ -39,7 +39,7 @@ var (
 	goFileToCompile string
 	driverCount     int32
 
-	rerunAlwaysFlag = flag.Bool("rerun_always", true, "Rerun even if code hasn't changed")
+	rerunAlwaysFlag = flag.Bool("rerun_always", false, "Rerun even if code hasn't changed")
 )
 
 func main() {

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"math/rand"
 	"strings"
 
 	"github.com/fogleman/gg"
@@ -15,21 +16,78 @@ import (
 )
 
 const (
-	width      = 1200                // pixels
-	height     = width * (728 / 383) // pixels
-	maxDepth   = 7
-	dist       = 6    // pixels
-	angleLeft  = 8.78 // degrees
-	angleRight = 2.7  // ditto
+	width    = 1024 // pixels
+	height   = 768  // pixels
+	maxDepth = 7
 )
 
 var (
 	seedFlag = flag.String("seed", "", "Hex value for the seed to use")
-	rules    = []string{
-		"f→ ff",
-		"x→ x[-x]f+[[x]-x]-f[-fx]+x",
+	lsystems = []lsystem{
+		{
+			name:       "Tree Like",
+			startAngle: 90,
+			angles:     []float64{8.78, 2.7},
+			depth:      7,
+			dist:       6, // pixels
+			axiom:      'x',
+			rules: map[rune]string{
+				'f': "ff",
+				'x': "x[-x]f+[[x]-x]-f[-fx]+x",
+			},
+			lineWidth: func(curDepth, maxDepth int) float64 {
+				return float64(maxDepth-2) / math.Pow(float64(curDepth+1), 1.6)
+			},
+		}, {
+			name:       "Hilbert",
+			startAngle: 0,
+			angles:     []float64{90},
+			depth:      6,
+			dist:       2, // pixels
+			axiom:      'l',
+			rules: map[rune]string{
+				'l': "→+rf-lfl-fr+",
+				'r': "-lf+rfr+fl-",
+			},
+			lineWidth: func(curDepth, maxDepth int) float64 { return 1 },
+		}, {
+			name:       "Sierpinski Gasket",
+			startAngle: 180,
+			angles:     []float64{45},
+			depth:      8,
+			dist:       1,
+			axiom:      'x',
+			rules: map[rune]string{
+				'x': "yf+xf+y",
+				'y': "xf-yf-x",
+			},
+			lineWidth: func(curDepth, maxDepth int) float64 { return 1 },
+		}, {
+			name:       "Gosper curve",
+			startAngle: 90,
+			angles:     []float64{60},
+			depth:      5,
+			dist:       1,
+			axiom:      'x',
+			rules: map[rune]string{
+				'x': "x+yf++yf-fx--fxfx-yf+",
+				'y': "-fx+yfyf++yf+fx--fx-y",
+			},
+			lineWidth: func(curDepth, maxDepth int) float64 { return 1 },
+		},
 	}
 )
+
+type lsystem struct {
+	name       string
+	startAngle float64   // degrees 90 is up
+	angles     []float64 // degrees
+	depth      int
+	dist       float64
+	axiom      rune
+	rules      map[rune]string
+	lineWidth  func(curDepth, maxDepth int) float64
+}
 
 func main() {
 	flag.Parse()
@@ -44,7 +102,10 @@ func main() {
 	ctx.SetColor(color.Black)
 	ctx.SetLineWidth(1)
 
-	f := initFractal(ctx, dist, angleLeft, angleRight, rules, width, height, maxDepth)
+	lsystem := lsystems[rand.Intn(len(lsystems))]
+	//lsystem = lsystems[len(lsystems)-1]
+
+	f := initFractal(ctx, lsystem, width, height)
 	f.generate()
 	f.draw()
 
@@ -57,29 +118,29 @@ func main() {
 type fractal struct {
 	ctx                   *gg.Context
 	sequence              string
-	maxDepth              int
-	dist                  float64 // how far to move forward, pixels
-	angleLeft, angleRight float64 // radians
-	width, height         int     // pixels
+	lsys                  lsystem
+	width, height         int // pixels
 	stack                 []turtle
-	rules                 map[rune]string
+	angleLeft, angleRight float64 // radians
 	minX, minY            float64
 	maxX, maxY            float64
 }
 
-func initFractal(ctx *gg.Context, dist, angleLeft, angleRight float64, rules []string, width, height, depth int) *fractal {
+func initFractal(ctx *gg.Context, lsys lsystem, width, height int) *fractal {
+	angleLeft := lsys.angles[0]
+	angleRight := angleLeft
+	if len(lsys.angles) == 2 {
+		angleRight = lsys.angles[1]
+	}
+
+	if lsys.lineWidth == nil {
+		lsys.lineWidth = func(curDepth, maxDepth int) float64 { return 1 }
+	}
 	f := &fractal{
 		ctx:       ctx,
-		dist:      dist,
-		rules:     make(map[rune]string, len(rules)),
+		lsys:      lsys,
 		angleLeft: gg.Radians(angleLeft), angleRight: gg.Radians(angleRight),
 		width: width, height: height,
-		maxDepth: depth,
-	}
-	for _, rule := range rules {
-		parts := strings.Split(rule, "→ ")
-		char := []rune(parts[0])[0]
-		f.rules[char] = parts[1]
 	}
 	return f
 }
@@ -91,12 +152,12 @@ type turtle struct {
 }
 
 func (f *fractal) generate() string {
-	start := "x"
 	var ok bool
-	for d := 0; d < f.maxDepth; d++ {
+	start := string(f.lsys.axiom)
+	for d := 0; d < f.lsys.depth; d++ {
 		nextGeneration := make([]string, len(start))
 		for i, c := range start {
-			nextGeneration[i], ok = f.rules[c]
+			nextGeneration[i], ok = f.lsys.rules[c]
 			if !ok {
 				nextGeneration[i] = string(c)
 			}
@@ -122,12 +183,13 @@ func (f *fractal) getLimits(s turtle, _ int) {
 }
 
 func (f *fractal) internalGenerate(drawTo func(turtle, int)) {
-	s := turtle{angle: gg.Radians(90)}
+	// Turtle starts facing up
+	s := turtle{angle: gg.Radians(f.lsys.startAngle)}
 	for _, c := range f.sequence {
 		switch c {
 		case 'f': // move forward
-			s.x += f.dist * math.Cos(s.angle)
-			s.y += f.dist * math.Sin(s.angle)
+			s.x += f.lsys.dist * math.Cos(s.angle)
+			s.y += f.lsys.dist * math.Sin(s.angle)
 			drawTo(s, len(f.stack))
 		case '-': // turn left
 			s.angle += f.angleLeft
@@ -156,7 +218,7 @@ func (f *fractal) normY(y float64) float64 {
 }
 
 func (f *fractal) drawTo(s turtle, depth int) {
-	f.ctx.SetLineWidth(float64(f.maxDepth-2) / math.Pow(float64(depth+1), 1.6))
+	f.ctx.SetLineWidth(f.lsys.lineWidth(depth, f.lsys.depth))
 	x, y := f.normX(s.x), f.normY(s.y)
 	f.ctx.LineTo(x, y)
 	f.ctx.Stroke()
