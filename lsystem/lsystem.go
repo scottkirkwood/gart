@@ -30,7 +30,7 @@ var (
 			angles:     []float64{8.78, 2.7},
 			depth:      7,
 			dist:       6, // pixels
-			axiom:      'x',
+			axiom:      "x",
 			rules: map[rune]string{
 				'f': "ff",
 				'x': "x[-x]f+[[x]-x]-f[-fx]+x",
@@ -44,7 +44,7 @@ var (
 			angles:     []float64{90},
 			depth:      6,
 			dist:       2, // pixels
-			axiom:      'l',
+			axiom:      "l",
 			rules: map[rune]string{
 				'l': "→+rf-lfl-fr+",
 				'r': "-lf+rfr+fl-",
@@ -56,7 +56,7 @@ var (
 			angles:     []float64{45},
 			depth:      8,
 			dist:       1,
-			axiom:      'x',
+			axiom:      "x",
 			rules: map[rune]string{
 				'x': "yf+xf+y",
 				'y': "xf-yf-x",
@@ -68,12 +68,47 @@ var (
 			angles:     []float64{60},
 			depth:      5,
 			dist:       1,
-			axiom:      'x',
+			axiom:      "x",
 			rules: map[rune]string{
 				'x': "x+yf++yf-fx--fxfx-yf+",
 				'y': "-fx+yfyf++yf+fx--fx-y",
 			},
 			lineWidth: func(curDepth, maxDepth int) float64 { return 1 },
+		}, {
+			name:       "Plant 1",
+			startAngle: -90,
+			angles:     []float64{-20},
+			depth:      5,
+			dist:       1,
+			axiom:      "x",
+			rules: map[rune]string{
+				'f': "ff",
+				'x': "f+[-f-xf-x][+ff][--xf[+x]][++f-x]",
+			},
+			lineWidth: func(curDepth, maxDepth int) float64 { return 1 },
+		}, {
+			name:       "Plant 2",
+			startAngle: -90,
+			angles:     []float64{-15},
+			depth:      5,
+			dist:       1,
+			axiom:      "X",
+			rules: map[rune]string{
+				'F': "FX[FX[+XF]]",
+				'X': "FF[+XZ++X-F[+ZX]][-X++F-X]",
+				'Z': "[+F-X-F][++ZX]",
+			},
+			lineWidth: func(curDepth, maxDepth int) float64 { return float64(maxDepth-curDepth)/5.9 + 1 },
+		}, {
+			name:       "Rectangles",
+			startAngle: 90,
+			angles:     []float64{90},
+			depth:      4,
+			dist:       1,
+			axiom:      "F-F-F-F",
+			rules: map[rune]string{
+				'F': "FF-F+F-F-FF",
+			},
 		},
 	}
 )
@@ -84,7 +119,7 @@ type lsystem struct {
 	angles     []float64 // degrees
 	depth      int
 	dist       float64
-	axiom      rune
+	axiom      string
 	rules      map[rune]string
 	lineWidth  func(curDepth, maxDepth int) float64
 }
@@ -153,7 +188,7 @@ type turtle struct {
 
 func (f *fractal) generate() string {
 	var ok bool
-	start := string(f.lsys.axiom)
+	start := f.lsys.axiom
 	for d := 0; d < f.lsys.depth; d++ {
 		nextGeneration := make([]string, len(start))
 		for i, c := range start {
@@ -187,7 +222,7 @@ func (f *fractal) internalGenerate(drawTo func(turtle, int)) {
 	s := turtle{angle: gg.Radians(f.lsys.startAngle)}
 	for _, c := range f.sequence {
 		switch c {
-		case 'f': // move forward
+		case 'f', 'F', 'G', 'g': // move forward
 			s.x += f.lsys.dist * math.Cos(s.angle)
 			s.y += f.lsys.dist * math.Sin(s.angle)
 			drawTo(s, len(f.stack))
