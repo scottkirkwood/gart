@@ -4,10 +4,13 @@ import (
 	"image"
 )
 
+// Line is a set of two image.Points
 type Line struct {
 	x1, x2 image.Point
 }
 
+// Crosses returns true if the other line crosses line.
+// Basically, line intersection but looking at end points.
 func (l Line) Crosses(other Line) bool {
 	return Crosses(l.x1, l.x2, other.x1, other.x2)
 }
@@ -34,7 +37,7 @@ func orientation(p, q, r image.Point) int {
 	return 2 // counterclock wise
 }
 
-// Returns true if line segment 'p1q1' and 'p2q2' crosses.
+// Crosses returns true if line segment `p1`,  `q1` and `p2`, `q2` crosses.
 func Crosses(p1, q1, p2, q2 image.Point) bool {
 	// Find the four orientations needed for general and
 	// special cases
@@ -75,7 +78,7 @@ func MinInt(a, b int) int {
 	return b
 }
 
-// MinInt return the max of a and b
+// MaxInt return the max of a and b
 func MaxInt(a, b int) int {
 	if a > b {
 		return a

@@ -9,7 +9,7 @@ import (
 	"github.com/fogleman/gg"
 )
 
-// Noisy safe write
+// SafeWrite noisily saves to tmp file and then moves for gg
 func (s Seed) SafeWrite(ctx *gg.Context, prefix, ext string) error {
 	fname := s.GetFilename(prefix, ext)
 	if err := safeWrite(ctx, fname); err != nil {
