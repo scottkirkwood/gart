@@ -223,8 +223,9 @@ func (f *fractal) internalGenerate(drawTo func(turtle, int)) {
 	for _, c := range f.sequence {
 		switch c {
 		case 'f', 'F', 'G', 'g': // move forward
-			s.x += f.lsys.dist * math.Cos(s.angle)
-			s.y += f.lsys.dist * math.Sin(s.angle)
+			dy, dx := math.Sincos(s.angle)
+			s.y += f.lsys.dist * dy
+			s.x += f.lsys.dist * dx
 			drawTo(s, len(f.stack))
 		case '-': // turn left
 			s.angle += f.angleLeft

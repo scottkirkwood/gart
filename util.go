@@ -12,22 +12,6 @@ func Basename(fName string) string {
 	return fName
 }
 
-// MinInt return the min of a and b
-func MinInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// MinInt return the max of a and b
-func MaxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // Clamp current value between low and high
 func Clamp(cur, low, high float64) float64 {
 	if low > high {
