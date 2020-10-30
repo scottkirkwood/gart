@@ -11,14 +11,14 @@ import (
 	"math/rand"
 	"strings"
 
-	"github.com/fogleman/gg"
 	"github.com/scottkirkwood/gart"
 )
 
 const (
-	width    = 1024 // pixels
-	height   = 768  // pixels
-	maxDepth = 7
+	width            = 215.9 // mm
+	height           = 279.4 // mm
+	defaultLineWidth = 0.3
+	maxDepth         = 7
 )
 
 var (
@@ -49,7 +49,7 @@ var (
 				'l': "→+rf-lfl-fr+",
 				'r': "-lf+rfr+fl-",
 			},
-			lineWidth: func(curDepth, maxDepth int) float64 { return 1 },
+			lineWidth: func(curDepth, maxDepth int) float64 { return defaultLineWidth },
 		}, {
 			name:       "Sierpinski Gasket",
 			startAngle: 180,
@@ -61,7 +61,7 @@ var (
 				'x': "yf+xf+y",
 				'y': "xf-yf-x",
 			},
-			lineWidth: func(curDepth, maxDepth int) float64 { return 1 },
+			lineWidth: func(curDepth, maxDepth int) float64 { return defaultLineWidth },
 		}, {
 			name:       "Gosper curve",
 			startAngle: 90,
@@ -73,11 +73,11 @@ var (
 				'x': "x+yf++yf-fx--fxfx-yf+",
 				'y': "-fx+yfyf++yf+fx--fx-y",
 			},
-			lineWidth: func(curDepth, maxDepth int) float64 { return 1 },
+			lineWidth: func(curDepth, maxDepth int) float64 { return defaultLineWidth },
 		}, {
 			name:       "Plant 1",
-			startAngle: -90,
-			angles:     []float64{-20},
+			startAngle: 90,
+			angles:     []float64{20},
 			depth:      5,
 			dist:       1,
 			axiom:      "x",
@@ -85,11 +85,11 @@ var (
 				'f': "ff",
 				'x': "f+[-f-xf-x][+ff][--xf[+x]][++f-x]",
 			},
-			lineWidth: func(curDepth, maxDepth int) float64 { return 1 },
+			lineWidth: func(curDepth, maxDepth int) float64 { return defaultLineWidth },
 		}, {
 			name:       "Plant 2",
-			startAngle: -90,
-			angles:     []float64{-15},
+			startAngle: 90,
+			angles:     []float64{15},
 			depth:      5,
 			dist:       1,
 			axiom:      "X",
@@ -98,7 +98,7 @@ var (
 				'X': "FF[+XZ++X-F[+ZX]][-X++F-X]",
 				'Z': "[+F-X-F][++ZX]",
 			},
-			lineWidth: func(curDepth, maxDepth int) float64 { return float64(maxDepth-curDepth)/5.9 + 1 },
+			lineWidth: func(curDepth, maxDepth int) float64 { return float64(maxDepth-curDepth)/5.9 + defaultLineWidth/2 },
 		}, {
 			name:       "Rectangles",
 			startAngle: 90,
@@ -124,34 +124,8 @@ type lsystem struct {
 	lineWidth  func(curDepth, maxDepth int) float64
 }
 
-func main() {
-	flag.Parse()
-	g, err := gart.Init(*seedFlag)
-	if err != nil {
-		fmt.Printf("Unable to set the seed: %v\n", err)
-	}
-
-	ctx := gg.NewContext(width, height)
-	ctx.SetColor(color.Gray{245})
-	ctx.Clear()
-	ctx.SetColor(color.Black)
-	ctx.SetLineWidth(1)
-
-	lsystem := lsystems[rand.Intn(len(lsystems))]
-	//lsystem = lsystems[len(lsystems)-1]
-
-	f := initFractal(ctx, lsystem, width, height)
-	f.generate()
-	f.draw()
-
-	if err := g.SafeWrite(ctx, "lsystem-", ".png"); err != nil {
-		fmt.Printf("Unable write image: %v\n", err)
-		return
-	}
-}
-
 type fractal struct {
-	ctx                   *gg.Context
+	ctx                   *gart.Context
 	sequence              string
 	lsys                  lsystem
 	width, height         int // pixels
@@ -161,7 +135,36 @@ type fractal struct {
 	maxX, maxY            float64
 }
 
-func initFractal(ctx *gg.Context, lsys lsystem, width, height int) *fractal {
+func main() {
+	flag.Parse()
+	g, err := gart.Init(*seedFlag)
+	if err != nil {
+		fmt.Printf("Unable to set the seed: %v\n", err)
+	}
+
+	ctx := gart.NewContext(width, height)
+	ctx.SetFillColor(color.Gray{245})
+	ctx.FillRect(0, 0, width, height)
+
+	ctx.SetStrokeColor(color.Black)
+	ctx.SetStrokeWidth(defaultLineWidth)
+
+	lsystem := lsystems[rand.Intn(len(lsystems))]
+	lsystem = lsystems[len(lsystems)-2]
+
+	f := initFractal(ctx, lsystem,
+		int(math.Floor(width)),
+		int(math.Floor(height)))
+	f.generate()
+	f.draw()
+
+	if err := g.SafeWrite(ctx, "lsystem-", ".png"); err != nil {
+		fmt.Printf("Unable write image: %v\n", err)
+		return
+	}
+}
+
+func initFractal(ctx *gart.Context, lsys lsystem, width, height int) *fractal {
 	angleLeft := lsys.angles[0]
 	angleRight := angleLeft
 	if len(lsys.angles) == 2 {
@@ -169,12 +172,12 @@ func initFractal(ctx *gg.Context, lsys lsystem, width, height int) *fractal {
 	}
 
 	if lsys.lineWidth == nil {
-		lsys.lineWidth = func(curDepth, maxDepth int) float64 { return 1 }
+		lsys.lineWidth = func(curDepth, maxDepth int) float64 { return defaultLineWidth }
 	}
 	f := &fractal{
 		ctx:       ctx,
 		lsys:      lsys,
-		angleLeft: gg.Radians(angleLeft), angleRight: gg.Radians(angleRight),
+		angleLeft: gart.Radians(angleLeft), angleRight: gart.Radians(angleRight),
 		width: width, height: height,
 	}
 	return f
@@ -219,7 +222,7 @@ func (f *fractal) getLimits(s turtle, _ int) {
 
 func (f *fractal) internalGenerate(drawTo func(turtle, int)) {
 	// Turtle starts facing up
-	s := turtle{angle: gg.Radians(f.lsys.startAngle)}
+	s := turtle{angle: gart.Radians(f.lsys.startAngle)}
 	for _, c := range f.sequence {
 		switch c {
 		case 'f', 'F', 'G', 'g': // move forward
@@ -239,6 +242,7 @@ func (f *fractal) internalGenerate(drawTo func(turtle, int)) {
 			f.moveTo(s, len(f.stack))
 		}
 	}
+	f.ctx.Close()
 }
 
 func boundTo(foundMin, foundMax, canvasMin, canvasMax, x float64) float64 {
@@ -254,7 +258,7 @@ func (f *fractal) normY(y float64) float64 {
 }
 
 func (f *fractal) drawTo(s turtle, depth int) {
-	f.ctx.SetLineWidth(f.lsys.lineWidth(depth, f.lsys.depth))
+	f.ctx.SetStrokeWidth(f.lsys.lineWidth(depth, f.lsys.depth))
 	x, y := f.normX(s.x), f.normY(s.y)
 	f.ctx.LineTo(x, y)
 	f.ctx.Stroke()
@@ -262,6 +266,6 @@ func (f *fractal) drawTo(s turtle, depth int) {
 }
 
 func (f *fractal) moveTo(s turtle, depth int) {
-	f.ctx.ClearPath()
+	f.ctx.Close()
 	f.ctx.MoveTo(f.normX(s.x), f.normY(s.y))
 }

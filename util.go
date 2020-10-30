@@ -1,8 +1,14 @@
 package gart
 
 import (
+	"math"
 	"strings"
 )
+
+// Radians converts degrees to radians
+func Radians(degrees float64) float64 {
+	return degrees * math.Pi / 180
+}
 
 // Basename retrieves the basename of a file path.
 func Basename(fName string) string {

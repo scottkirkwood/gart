@@ -121,21 +121,21 @@ func compileOne(fname string) {
 }
 
 func newFile(fname string, newImgChan chan string) {
-	if !strings.HasSuffix(fname, ".png") {
+	if !strings.HasSuffix(fname, ".png") || gartTmpFile.MatchString(fname) {
 		return
 	}
 	maybeStartDriver(newImgChan)
 	newImgChan <- fname
 }
 
-var onlyDigitsRx = regexp.MustCompile(`\d+`)
+var gartTmpFile = regexp.MustCompile(`\./gart.\d+\.png`)
+var vimTmpFile = regexp.MustCompile(`\d+`)
 
 func fileChanged(fname string) bool {
-	if onlyDigitsRx.MatchString(fname) {
-		// Ignore temp files by vim which have only digits
+	if gartTmpFile.MatchString(fname) || vimTmpFile.MatchString(fname) {
+		// Ignore gart and vim temp files
 		return false
 	}
-
 	fileCrcMux.Lock()
 	defer fileCrcMux.Unlock()
 
