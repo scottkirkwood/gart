@@ -50,3 +50,11 @@ func ClampInt(cur, low, high int) int {
 func Lerp(v0, v1, t float64) float64 {
 	return v0*(1-t) + v1*t
 }
+
+// AbsInt is a int version of abs()
+func AbsInt(a int) int {
+	if a < 0 {
+		return -a
+	}
+	return a
+}
