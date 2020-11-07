@@ -72,6 +72,11 @@ func (ctx *Context) MoveTo(x, y float64) {
 	ctx.ctx.MoveTo(x, y)
 }
 
+// Point draws a 1 pixel rectangle at point
+func (ctx *Context) Point(x, y float64) {
+	ctx.ctx.DrawPath(x, y, canvas.Rectangle(1, 1))
+}
+
 // LineTo adds a linear path to x,y.
 func (ctx *Context) LineTo(x, y float64) {
 	ctx.ctx.LineTo(x, y)

@@ -50,6 +50,10 @@ func main() {
 	fmt.Printf("Num colors %d\n", len(palette))
 
 	s := newSubstrate(dimx, dimy, maxnum, palette)
+	s.begin()
+	s.makeCrack()
+	s.draw(ctx)
+
 	if err := g.SafeWrite(ctx, "substrate-", ".png"); err != nil {
 		fmt.Printf("Unable write image: %v\n", err)
 		return
@@ -96,10 +100,19 @@ func (s *Substrate) begin() {
 	//background(255);
 }
 
+func (s *Substrate) draw(ctx *gart.Context) {
+	for i := 0; i < 1000; i++ {
+		// crack all cracks
+		for n := 0; n < len(s.cracks); n++ {
+			s.cracks[n].move(ctx, s)
+		}
+	}
+}
+
 func (s *Substrate) makeCrack() {
 	// make a new crack instance
 	if len(s.cracks) < cap(s.cracks) {
-		s.cracks = append(s.cracks, newCrack())
+		s.cracks = append(s.cracks, newCrack(s))
 	}
 }
 
@@ -108,11 +121,14 @@ type Crack struct {
 	t    float64 // direction of travel in degrees
 }
 
-func newCrack() *Crack {
-	return &Crack{}
+func newCrack(s *Substrate) *Crack {
+	// find placement along existing crack
+	c := &Crack{}
+	c.findStart(s)
+	return c
 }
 
-func (c *Crack) regionColor(s *Substrate) {
+func (c *Crack) regionColor(ctx *gart.Context, s *Substrate) {
 	// start checking one step away
 	rx := c.x
 	ry := c.y
@@ -138,7 +154,7 @@ func (c *Crack) regionColor(s *Substrate) {
 		}
 	}
 	// draw sand painter
-	s.sp.render(rx, ry, c.x, c.y)
+	s.sp.render(ctx, rx, ry, c.x, c.y)
 }
 
 func (c *Crack) findStart(s *Substrate) {
@@ -178,7 +194,7 @@ func (c *Crack) startCrack(X, Y, T float64) {
 	c.y += 0.61 * sin
 }
 
-func (c *Crack) move(s *Substrate) {
+func (c *Crack) move(ctx *gart.Context, s *Substrate) {
 	// continue cracking
 	sin, cos := math.Sincos(c.t * math.Pi / 180)
 	c.x += 0.42 * cos
@@ -190,11 +206,11 @@ func (c *Crack) move(s *Substrate) {
 	cy := int(c.y + rand.Float64()*2*z - z)
 
 	// draw sand painter
-	c.regionColor(s)
+	c.regionColor(ctx, s)
 
 	// draw black crack
-	gart.Stroke(0, 85)
-	gart.Point(c.x+randRange(-z, z), c.y+randRange(-z, z))
+	ctx.SetStrokeColor(color.RGBA{0, 0, 0, 85})
+	ctx.Point(c.x+randRange(-z, z), c.y+randRange(-z, z))
 
 	if (cx >= 0) && (cx < s.dimx) && (cy >= 0) && (cy < s.dimy) {
 		// safe to check
@@ -225,8 +241,8 @@ func newSandPainter(palette color.Palette) *SandPainter {
 	}
 }
 
-func (s *SandPainter) render(x, y, ox, oy float64) {
-	// modulate gain
+func (s *SandPainter) render(ctx *gart.Context, x, y, ox, oy float64) {
+	// modulate grain
 	s.g += randRange(-0.050, 0.050)
 	maxg := 1.0
 	if s.g < 0 {
@@ -244,8 +260,9 @@ func (s *SandPainter) render(x, y, ox, oy float64) {
 	w := s.g / (grains - 1)
 	for i := 0.0; i < grains; i++ {
 		a := 0.1 - i/(grains*10.0)
-		gart.Stroke(s.RGBA())
-		gart.Point(ox+(x-ox)*math.Sin(math.Sin(i*w)), oy+(y-oy)*math.Sin(math.Sin(i*w)))
+		rr, gg, bb, _ := s.c.RGBA()
+		ctx.SetStrokeColor(color.RGBA{uint8(rr), uint8(gg), uint8(bb), uint8(a * 256)})
+		ctx.Point(ox+(x-ox)*math.Sin(math.Sin(i*w)), oy+(y-oy)*math.Sin(math.Sin(i*w)))
 	}
 }
 
