@@ -26,7 +26,7 @@ const (
 	dimx = 1024 // pixels
 	dimy = 768
 
-	maxnum     = 500
+	maxnum     = 256 // 500
 	maxPal     = 512
 	emptyAngle = -1
 )
@@ -172,8 +172,7 @@ func (c *Crack) regionColor(s *Substrate) {
 		dx, dy := calcDxy(c.t, 0.81)
 		rx += dy
 		ry -= dx
-		cx := int(rx)
-		cy := int(ry)
+		cx, cy := int(rx), int(ry)
 		if !s.inBounds(cx, cy) {
 			break
 		}
@@ -184,21 +183,21 @@ func (c *Crack) regionColor(s *Substrate) {
 			break
 		}
 	}
-	// draw sand painter
+	// render sand painter
 	c.render(s.ctx, rx, ry, c.x, c.y)
 }
 
 func (c *Crack) findStart(s *Substrate) {
-	px, py, found := s.findRandomPoint()
-	if found {
+	if px, py, found := s.findRandomPoint(); found {
 		// start crack
 		ang := s.getAngle(px, py)
-		randDeg := degrees(90 + rand.Float64()*4.1 - 2)
+		randDeg := degrees(90 + randRange(-2, 2.1))
 		if rand.Intn(100) < 50 {
 			ang -= randDeg
 		} else {
 			ang += randDeg
 		}
+		ang = degrees(math.Mod(float64(ang), 360))
 		c.startCrack(s, float64(px), float64(py), ang)
 	}
 }
@@ -226,11 +225,6 @@ func (c *Crack) startCrack(s *Substrate, X, Y float64, T degrees) {
 	s.ctx.MoveTo(c.x, c.y)
 }
 
-func calcDxy(angle degrees, mag float64) (dx, dy float64) {
-	sin, cos := math.Sincos(gart.Radians(float64(angle)))
-	return mag * cos, mag * sin
-}
-
 func (c *Crack) move(s *Substrate) {
 	// continue cracking
 	dx, dy := calcDxy(c.t, 0.42)
@@ -238,24 +232,26 @@ func (c *Crack) move(s *Substrate) {
 	c.y += dy
 
 	// bound check
-	z := 0.33
-	cx := int(c.x + rand.Float64()*2*z - z) // add fuzz
-	cy := int(c.y + rand.Float64()*2*z - z)
+	const z = 0.33
+	cx := int(c.x + randRange(-z, z)) // add fuzz
+	cy := int(c.y + randRange(-z, z))
 
 	// draw sand painter
 	c.regionColor(s)
 
 	// draw black crack
-	s.ctx.SetStrokeColor(color.RGBA{0, 0, 0, 85})
+	//s.ctx.SetStrokeColor(color.RGBA{0, 0, 0, 85})
+	s.ctx.SetStrokeColor(c.color)
 	s.ctx.LineTo(c.x+randRange(-z, z), c.y+randRange(-z, z))
+	s.ctx.Stroke()
 
 	if s.inBounds(cx, cy) {
 		// safe to check
-		if s.getAngle(cx, cy) >= emptyAngle ||
-			math.Abs(float64(s.getAngle(cx, cy)-c.t)) < 5 {
+		if s.getAngle(cx, cy) == emptyAngle ||
+			angleDiff(s.getAngle(cx, cy), c.t) < 5 {
 			// continue cracking
 			s.setAngle(cx, cy, degrees(c.t))
-		} else if math.Abs(float64(s.getAngle(cx, cy)-c.t)) > 3 {
+		} else if angleDiff(s.getAngle(cx, cy), c.t) > 2 {
 			// crack encountered (not self), stop cracking
 			c.findStart(s)
 			s.makeCrack()
@@ -270,18 +266,11 @@ func (c *Crack) move(s *Substrate) {
 
 func (c *Crack) render(ctx *gart.Context, x, y, ox, oy float64) {
 	// modulate grain
-	c.grain += randRange(-0.050, 0.050)
-	maxg := 1.0
-	if c.grain < 0 {
-		c.grain = 0
-	}
-	if c.grain > maxg {
-		c.grain = maxg
-	}
+	c.grain += gart.Clamp(randRange(-0.050, 0.050), 0, 1.0)
 
 	// calculate grains by distance
 	//int grains = int(sqrt((ox-x)*(ox-x)+(oy-y)*(oy-y)));
-	grains := 64.0
+	grains := 32.0
 
 	// lay down grains of sand (transparent pixels)
 	w := c.grain / (grains - 1)
@@ -289,11 +278,12 @@ func (c *Crack) render(ctx *gart.Context, x, y, ox, oy float64) {
 	for i := 0.0; i < grains; i++ {
 		aa := 0.1 - i/(grains*10.0)
 		rr, gg, bb, _ := c.color.RGBA()
-		ctx.SetStrokeColor(color.RGBA{
-			R: uint8(256 * rr / 0xffff),
-			G: uint8(256 * gg / 0xffff),
-			B: uint8(256 * bb / 0xffff),
-			A: uint8(aa * 256)})
+		ctx.SetStrokeColor(color.RGBA64{
+			R: uint16(rr),
+			G: uint16(gg),
+			B: uint16(bb),
+			A: uint16(aa * 0xffff)})
+
 		siniw := math.Sin(math.Sin(i * w))
 		ctx.LineTo(
 			ox+(x-ox)*siniw,
@@ -336,10 +326,6 @@ func takeColors(fname string) (color.Palette, error) {
 	return pal[:maxPal], nil
 }
 
-func randRange(low, high float64) float64 {
-	return rand.Float64()*(high-low) + low
-}
-
 func showPalette(ctx *gart.Context, palette color.Palette, w, h float64) {
 	rows := 16
 	cols := len(palette) / rows
@@ -355,4 +341,20 @@ func showPalette(ctx *gart.Context, palette color.Palette, w, h float64) {
 			ctx.FillRect(float64(x)*dx, float64(y)*dy, dx, dy)
 		}
 	}
+}
+
+func calcDxy(angle degrees, mag float64) (dx, dy float64) {
+	sin, cos := math.Sincos(gart.Radians(float64(angle)))
+	return mag * cos, mag * sin
+}
+
+func randRange(low, high float64) float64 {
+	if high < low {
+		low, high = high, low
+	}
+	return rand.Float64()*(high-low) + low
+}
+
+func angleDiff(ang1, ang2 degrees) float64 {
+	return math.Abs(float64(ang1 - ang2))
 }
