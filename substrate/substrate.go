@@ -80,7 +80,6 @@ type Substrate struct {
 	cracks             []*Crack
 	goodcolor          color.Palette
 	dimx, dimy, maxnum int
-	sp                 *SandPainter
 }
 
 func newSubstrate(ctx *gart.Context, dimx, dimy, maxnum int, palette color.Palette) Substrate {
@@ -92,7 +91,6 @@ func newSubstrate(ctx *gart.Context, dimx, dimy, maxnum int, palette color.Palet
 		dimx:      dimx,
 		dimy:      dimy,
 		maxnum:    maxnum,
-		sp:        newSandPainter(palette),
 	}
 }
 
@@ -147,13 +145,18 @@ func (s *Substrate) makeCrack() {
 }
 
 type Crack struct {
-	x, y float64
-	t    float64 // direction of travel in degrees
+	x, y  float64
+	t     degrees     // direction of travel in degrees
+	color color.Color // Color
+	grain float64     // Grain
 }
 
 func newCrack(s *Substrate) *Crack {
 	// find placement along existing crack
-	c := &Crack{}
+	c := &Crack{
+		color: s.goodcolor[rand.Intn(len(s.goodcolor))],
+		grain: randRange(0.01, 0.1),
+	}
 	c.findStart(s)
 	return c
 }
@@ -166,32 +169,31 @@ func (c *Crack) regionColor(s *Substrate) {
 	// find extents of open space
 	for {
 		// move perpendicular to crack
-		sin, cos := math.Sincos(gart.Radians(c.t))
-		rx += 0.81 * sin
-		ry -= 0.81 * cos
+		dx, dy := calcDxy(c.t, 0.81)
+		rx += dy
+		ry -= dx
 		cx := int(rx)
 		cy := int(ry)
-		if s.inBounds(cx, cy) {
-			// safe to check
-			if s.getAngle(cx, cy) == emptyAngle {
-				// space is open
-			} else {
-				break
-			}
+		if !s.inBounds(cx, cy) {
+			break
+		}
+		// safe to check
+		if s.getAngle(cx, cy) == emptyAngle {
+			// space is open
 		} else {
 			break
 		}
 	}
 	// draw sand painter
-	s.sp.render(s.ctx, rx, ry, c.x, c.y)
+	c.render(s.ctx, rx, ry, c.x, c.y)
 }
 
 func (c *Crack) findStart(s *Substrate) {
 	px, py, found := s.findRandomPoint()
 	if found {
 		// start crack
-		ang := float64(s.getAngle(px, py))
-		randDeg := 90 + rand.Float64()*4.1 - 2
+		ang := s.getAngle(px, py)
+		randDeg := degrees(90 + rand.Float64()*4.1 - 2)
 		if rand.Intn(100) < 50 {
 			ang -= randDeg
 		} else {
@@ -212,22 +214,28 @@ func (s *Substrate) findRandomPoint() (x, y int, found bool) {
 	return 0, 0, false
 }
 
-func (c *Crack) startCrack(s *Substrate, X, Y, T float64) {
+func (c *Crack) startCrack(s *Substrate, X, Y float64, T degrees) {
 	c.x = X
 	c.y = Y
-	c.t = math.Mod(T, 360)
-	sin, cos := math.Sincos(gart.Radians(c.t))
-	c.x += 0.61 * cos
-	c.y += 0.61 * sin
+	c.t = T
+
+	dx, dy := calcDxy(c.t, 0.61)
+	c.x += dx
+	c.y += dy
 
 	s.ctx.MoveTo(c.x, c.y)
 }
 
+func calcDxy(angle degrees, mag float64) (dx, dy float64) {
+	sin, cos := math.Sincos(gart.Radians(float64(angle)))
+	return mag * cos, mag * sin
+}
+
 func (c *Crack) move(s *Substrate) {
 	// continue cracking
-	sin, cos := math.Sincos(gart.Radians(c.t))
-	c.x += 0.42 * cos
-	c.y += 0.42 * sin
+	dx, dy := calcDxy(c.t, 0.42)
+	c.x += dx
+	c.y += dy
 
 	// bound check
 	z := 0.33
@@ -244,10 +252,10 @@ func (c *Crack) move(s *Substrate) {
 	if s.inBounds(cx, cy) {
 		// safe to check
 		if s.getAngle(cx, cy) >= emptyAngle ||
-			math.Abs(float64(s.getAngle(cx, cy)))-c.t < 5 {
+			math.Abs(float64(s.getAngle(cx, cy)-c.t)) < 5 {
 			// continue cracking
 			s.setAngle(cx, cy, degrees(c.t))
-		} else if math.Abs(float64(s.getAngle(cx, cy))-c.t) > 3 {
+		} else if math.Abs(float64(s.getAngle(cx, cy)-c.t)) > 3 {
 			// crack encountered (not self), stop cracking
 			c.findStart(s)
 			s.makeCrack()
@@ -260,27 +268,15 @@ func (c *Crack) move(s *Substrate) {
 	s.ctx.Stroke()
 }
 
-type SandPainter struct {
-	c color.Color // Color
-	g float64     // Grain
-}
-
-func newSandPainter(palette color.Palette) *SandPainter {
-	return &SandPainter{
-		c: palette[rand.Intn(len(palette))],
-		g: randRange(0.01, 0.1),
-	}
-}
-
-func (sp *SandPainter) render(ctx *gart.Context, x, y, ox, oy float64) {
+func (c *Crack) render(ctx *gart.Context, x, y, ox, oy float64) {
 	// modulate grain
-	sp.g += randRange(-0.050, 0.050)
+	c.grain += randRange(-0.050, 0.050)
 	maxg := 1.0
-	if sp.g < 0 {
-		sp.g = 0
+	if c.grain < 0 {
+		c.grain = 0
 	}
-	if sp.g > maxg {
-		sp.g = maxg
+	if c.grain > maxg {
+		c.grain = maxg
 	}
 
 	// calculate grains by distance
@@ -288,22 +284,20 @@ func (sp *SandPainter) render(ctx *gart.Context, x, y, ox, oy float64) {
 	grains := 64.0
 
 	// lay down grains of sand (transparent pixels)
-	w := sp.g / (grains - 1)
+	w := c.grain / (grains - 1)
 	ctx.MoveTo(ox, oy)
 	for i := 0.0; i < grains; i++ {
 		aa := 0.1 - i/(grains*10.0)
-		rr, gg, bb, _ := sp.c.RGBA()
+		rr, gg, bb, _ := c.color.RGBA()
 		ctx.SetStrokeColor(color.RGBA{
-			R: uint8(rr),
-			G: uint8(gg),
-			B: uint8(bb),
+			R: uint8(256 * rr / 0xffff),
+			G: uint8(256 * gg / 0xffff),
+			B: uint8(256 * bb / 0xffff),
 			A: uint8(aa * 256)})
 		siniw := math.Sin(math.Sin(i * w))
-		if true {
-			ctx.LineTo(
-				ox+(x-ox)*siniw,
-				oy+(y-oy)*siniw)
-		}
+		ctx.LineTo(
+			ox+(x-ox)*siniw,
+			oy+(y-oy)*siniw)
 	}
 }
 
