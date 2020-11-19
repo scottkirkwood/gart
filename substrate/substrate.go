@@ -12,7 +12,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"sort"
+	//"sort"
 
 	"github.com/scottkirkwood/gart"
 )
@@ -26,9 +26,12 @@ const (
 	dimx = 1024 // pixels
 	dimy = 768
 
-	maxnum = 500
-	maxPal = 512
+	maxnum     = 500
+	maxPal     = 512
+	emptyAngle = -1
 )
+
+type degrees int
 
 var (
 	seedFlag = flag.String("seed", "", "Hex value for the seed to use")
@@ -48,29 +51,42 @@ func main() {
 
 	palette, err := takeColors("pollockShimmering.jpg")
 	fmt.Printf("Num colors %d\n", len(palette))
-
-	s := newSubstrate(dimx, dimy, maxnum, palette)
+	if err != nil {
+		fmt.Printf("Unable get palette: %v\n", err)
+		return
+	}
+	s := newSubstrate(ctx, dimx, dimy, maxnum, palette)
 	s.begin()
 	s.makeCrack()
-	s.draw(ctx)
+	s.draw()
 
-	if err := g.SafeWrite(ctx, "substrate-", ".png"); err != nil {
-		fmt.Printf("Unable write image: %v\n", err)
-		return
+	if true {
+		if err := g.SafeWrite(ctx, "substrate-", ".png"); err != nil {
+			fmt.Printf("Unable write image: %v\n", err)
+			return
+		}
+	} else {
+		if err := g.SafeWrite(ctx, "substrate-", ".svg"); err != nil {
+			fmt.Printf("Unable write image: %v\n", err)
+			return
+		}
 	}
 }
 
 type Substrate struct {
-	cgrid              []int
+	ctx   *gart.Context
+	cgrid []degrees
+
 	cracks             []*Crack
 	goodcolor          color.Palette
 	dimx, dimy, maxnum int
 	sp                 *SandPainter
 }
 
-func newSubstrate(dimx, dimy, maxnum int, palette color.Palette) Substrate {
+func newSubstrate(ctx *gart.Context, dimx, dimy, maxnum int, palette color.Palette) Substrate {
 	return Substrate{
-		cgrid:     make([]int, dimy*dimx),
+		ctx:       ctx,
+		cgrid:     make([]degrees, dimy*dimx),
 		cracks:    make([]*Crack, 0, maxnum),
 		goodcolor: palette,
 		dimx:      dimx,
@@ -82,15 +98,16 @@ func newSubstrate(dimx, dimy, maxnum int, palette color.Palette) Substrate {
 
 func (s *Substrate) begin() {
 	// erase crack grid
-	for y := 0; y < dimy; y++ {
-		for x := 0; x < dimx; x++ {
-			s.cgrid[y*dimx+x] = 10001
+	for y := 0; y < s.dimy; y++ {
+		for x := 0; x < s.dimx; x++ {
+			s.setAngle(x, y, emptyAngle)
 		}
 	}
 	// make random crack seeds
-	for k := 0; k < 16; k++ {
-		i := int(rand.Intn(dimx*dimy - 1))
-		s.cgrid[i] = rand.Intn(360)
+	for k := 0; k < 6; k++ {
+		x := rand.Intn(s.dimx)
+		y := rand.Intn(s.dimy)
+		s.setAngle(x, y, degrees(rand.Intn(360)))
 	}
 
 	// make just three cracks
@@ -100,13 +117,26 @@ func (s *Substrate) begin() {
 	//background(255);
 }
 
-func (s *Substrate) draw(ctx *gart.Context) {
-	for i := 0; i < 1000; i++ {
+func (s *Substrate) setAngle(x, y int, deg degrees) {
+	s.cgrid[y*s.dimx+x] = deg
+}
+
+func (s *Substrate) getAngle(x, y int) degrees {
+	return s.cgrid[y*s.dimx+x]
+}
+
+func (s *Substrate) inBounds(x, y int) bool {
+	return x >= 0 && x < s.dimx && y >= 0 && y < s.dimy
+}
+
+func (s *Substrate) draw() {
+	for i := 0; i < 3000; i++ {
 		// crack all cracks
 		for n := 0; n < len(s.cracks); n++ {
-			s.cracks[n].move(ctx, s)
+			s.cracks[n].move(s)
 		}
 	}
+	//s.ctx.Close()
 }
 
 func (s *Substrate) makeCrack() {
@@ -128,75 +158,74 @@ func newCrack(s *Substrate) *Crack {
 	return c
 }
 
-func (c *Crack) regionColor(ctx *gart.Context, s *Substrate) {
+func (c *Crack) regionColor(s *Substrate) {
 	// start checking one step away
 	rx := c.x
 	ry := c.y
-	openspace := true
 
 	// find extents of open space
-	for openspace {
+	for {
 		// move perpendicular to crack
-		sin, cos := math.Sincos(c.t * math.Pi / 180)
+		sin, cos := math.Sincos(gart.Radians(c.t))
 		rx += 0.81 * sin
 		ry -= 0.81 * cos
 		cx := int(rx)
 		cy := int(ry)
-		if cx >= 0 && cx < dimx && cy >= 0 && cy < dimy {
+		if s.inBounds(cx, cy) {
 			// safe to check
-			if s.cgrid[cy*s.dimx+cx] > 10000 {
+			if s.getAngle(cx, cy) == emptyAngle {
 				// space is open
 			} else {
-				openspace = false
+				break
 			}
 		} else {
-			openspace = false
-		}
-	}
-	// draw sand painter
-	s.sp.render(ctx, rx, ry, c.x, c.y)
-}
-
-func (c *Crack) findStart(s *Substrate) {
-	// pick random point
-	px := 0
-	py := 0
-
-	// shift until crack is found
-	found := false
-	for timeout := 0; timeout < 1000; timeout++ {
-		px = rand.Intn(dimx)
-		py = rand.Intn(dimy)
-		if s.cgrid[py*dimx+px] < 10000 {
-			found = true
 			break
 		}
 	}
+	// draw sand painter
+	s.sp.render(s.ctx, rx, ry, c.x, c.y)
+}
 
+func (c *Crack) findStart(s *Substrate) {
+	px, py, found := s.findRandomPoint()
 	if found {
 		// start crack
-		a := float64(s.cgrid[py*dimx+px])
+		ang := float64(s.getAngle(px, py))
+		randDeg := 90 + rand.Float64()*4.1 - 2
 		if rand.Intn(100) < 50 {
-			a -= 90 + rand.Float64()*4.1 - 2
+			ang -= randDeg
 		} else {
-			a += 90 + rand.Float64()*4.1 - 2
+			ang += randDeg
 		}
-		c.startCrack(float64(px), float64(py), a)
+		c.startCrack(s, float64(px), float64(py), ang)
 	}
 }
 
-func (c *Crack) startCrack(X, Y, T float64) {
-	c.x = X
-	c.y = Y
-	c.t = T //%360;
-	sin, cos := math.Sincos(c.t * math.Pi / 180)
-	c.x += 0.61 * cos
-	c.y += 0.61 * sin
+func (s *Substrate) findRandomPoint() (x, y int, found bool) {
+	for timeout := 0; timeout < 1000; timeout++ {
+		px := rand.Intn(s.dimx)
+		py := rand.Intn(s.dimy)
+		if s.getAngle(px, py) != emptyAngle {
+			return px, py, true
+		}
+	}
+	return 0, 0, false
 }
 
-func (c *Crack) move(ctx *gart.Context, s *Substrate) {
+func (c *Crack) startCrack(s *Substrate, X, Y, T float64) {
+	c.x = X
+	c.y = Y
+	c.t = math.Mod(T, 360)
+	sin, cos := math.Sincos(gart.Radians(c.t))
+	c.x += 0.61 * cos
+	c.y += 0.61 * sin
+
+	s.ctx.MoveTo(c.x, c.y)
+}
+
+func (c *Crack) move(s *Substrate) {
 	// continue cracking
-	sin, cos := math.Sincos(c.t * math.Pi / 180)
+	sin, cos := math.Sincos(gart.Radians(c.t))
 	c.x += 0.42 * cos
 	c.y += 0.42 * sin
 
@@ -206,18 +235,19 @@ func (c *Crack) move(ctx *gart.Context, s *Substrate) {
 	cy := int(c.y + rand.Float64()*2*z - z)
 
 	// draw sand painter
-	c.regionColor(ctx, s)
+	c.regionColor(s)
 
 	// draw black crack
-	ctx.SetStrokeColor(color.RGBA{0, 0, 0, 85})
-	ctx.Point(c.x+randRange(-z, z), c.y+randRange(-z, z))
+	s.ctx.SetStrokeColor(color.RGBA{0, 0, 0, 85})
+	s.ctx.LineTo(c.x+randRange(-z, z), c.y+randRange(-z, z))
 
-	if (cx >= 0) && (cx < s.dimx) && (cy >= 0) && (cy < s.dimy) {
+	if s.inBounds(cx, cy) {
 		// safe to check
-		if s.cgrid[cy*s.dimx+cx] > 10000 || math.Abs(float64(s.cgrid[cy*s.dimx+cx]))-c.t < 5 {
+		if s.getAngle(cx, cy) >= emptyAngle ||
+			math.Abs(float64(s.getAngle(cx, cy)))-c.t < 5 {
 			// continue cracking
-			s.cgrid[cy*s.dimx+cx] = int(c.t)
-		} else if math.Abs(float64(s.cgrid[cy*s.dimx+cx])-c.t) > 3 {
+			s.setAngle(cx, cy, degrees(c.t))
+		} else if math.Abs(float64(s.getAngle(cx, cy))-c.t) > 3 {
 			// crack encountered (not self), stop cracking
 			c.findStart(s)
 			s.makeCrack()
@@ -227,6 +257,7 @@ func (c *Crack) move(ctx *gart.Context, s *Substrate) {
 		c.findStart(s)
 		s.makeCrack()
 	}
+	s.ctx.Stroke()
 }
 
 type SandPainter struct {
@@ -241,15 +272,15 @@ func newSandPainter(palette color.Palette) *SandPainter {
 	}
 }
 
-func (s *SandPainter) render(ctx *gart.Context, x, y, ox, oy float64) {
+func (sp *SandPainter) render(ctx *gart.Context, x, y, ox, oy float64) {
 	// modulate grain
-	s.g += randRange(-0.050, 0.050)
+	sp.g += randRange(-0.050, 0.050)
 	maxg := 1.0
-	if s.g < 0 {
-		s.g = 0
+	if sp.g < 0 {
+		sp.g = 0
 	}
-	if s.g > maxg {
-		s.g = maxg
+	if sp.g > maxg {
+		sp.g = maxg
 	}
 
 	// calculate grains by distance
@@ -257,12 +288,22 @@ func (s *SandPainter) render(ctx *gart.Context, x, y, ox, oy float64) {
 	grains := 64.0
 
 	// lay down grains of sand (transparent pixels)
-	w := s.g / (grains - 1)
+	w := sp.g / (grains - 1)
+	ctx.MoveTo(ox, oy)
 	for i := 0.0; i < grains; i++ {
-		a := 0.1 - i/(grains*10.0)
-		rr, gg, bb, _ := s.c.RGBA()
-		ctx.SetStrokeColor(color.RGBA{uint8(rr), uint8(gg), uint8(bb), uint8(a * 256)})
-		ctx.Point(ox+(x-ox)*math.Sin(math.Sin(i*w)), oy+(y-oy)*math.Sin(math.Sin(i*w)))
+		aa := 0.1 - i/(grains*10.0)
+		rr, gg, bb, _ := sp.c.RGBA()
+		ctx.SetStrokeColor(color.RGBA{
+			R: uint8(rr),
+			G: uint8(gg),
+			B: uint8(bb),
+			A: uint8(aa * 256)})
+		siniw := math.Sin(math.Sin(i * w))
+		if true {
+			ctx.LineTo(
+				ox+(x-ox)*siniw,
+				oy+(y-oy)*siniw)
+		}
 	}
 }
 
@@ -292,7 +333,7 @@ func takeColors(fname string) (color.Palette, error) {
 	for key, val := range colorMap {
 		toSort = append(toSort, colCount{key, val})
 	}
-	sort.Slice(toSort, func(i, j int) bool { return toSort[i].count > toSort[j].count })
+	//sort.Slice(toSort, func(i, j int) bool { return toSort[i].count > toSort[j].count })
 
 	pal := make(color.Palette, 0, len(toSort))
 	for _, colCount := range toSort {
@@ -303,4 +344,21 @@ func takeColors(fname string) (color.Palette, error) {
 
 func randRange(low, high float64) float64 {
 	return rand.Float64()*(high-low) + low
+}
+
+func showPalette(ctx *gart.Context, palette color.Palette, w, h float64) {
+	rows := 16
+	cols := len(palette) / rows
+	dx := w / float64(cols)
+	dy := h / float64(rows)
+	for y := 0; y < rows; y++ {
+		for x := 0; x < cols; x++ {
+			index := y*cols + x
+			if index >= len(palette) {
+				break
+			}
+			ctx.SetFillColor(palette[index])
+			ctx.FillRect(float64(x)*dx, float64(y)*dy, dx, dy)
+		}
+	}
 }
