@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -64,15 +65,22 @@ func main() {
 	go maybeStartDriver(newImgChan)
 	go compileOne(goFileToCompile)
 
+	if folder == "" {
+		folder, _ = os.Getwd()
+	}
 	// out of the box fsnotify can watch a single file, or a single directory
 	if err := watcher.Add(folder); err != nil {
 		fmt.Printf("Problem add folder watcher: %v\n", err)
 	}
-	if folder == "" {
-		folder, _ = os.Getwd()
-	}
 	fmt.Printf("Monitoring folder %q\n", folder)
 
+	samplesDir := path.Join(folder, "samples")
+	if _, err := os.Stat(samplesDir); !os.IsNotExist(err) {
+		if err := watcher.Add(samplesDir); err != nil {
+			fmt.Printf("Problem add folder watcher: %v\n", err)
+		}
+		fmt.Printf("Also monitoring %q\n", samplesDir)
+	}
 	<-done
 }
 
@@ -241,13 +249,14 @@ func maybeStartDriver(newImgChan chan string) {
 		w.Publish()
 
 		var (
-			repaint  bool
-			imgs     []image.Image
-			sz       size.Event
-			i        int // index of image to display
-			dragging bool
-			drag     image.Point
-			origin   image.Point
+			repaint   bool
+			imgs      []image.Image
+			sz        size.Event
+			i         int // index of image to display
+			dragging  bool
+			drag      image.Point
+			origin    image.Point
+			lastImage string
 		)
 
 		for {
@@ -255,6 +264,7 @@ func maybeStartDriver(newImgChan chan string) {
 			e := w.NextEvent()
 			switch e := e.(type) {
 			case string:
+				lastImage = e
 				_, newImgs := gart.DecodeImages([]string{e})
 				imgs = append(imgs, newImgs...)
 				i = gart.MaxInt(len(imgs)-1, 0)
@@ -263,6 +273,12 @@ func maybeStartDriver(newImgChan chan string) {
 				switch e.Code {
 				case key.CodeEscape, key.CodeQ:
 					return
+				case key.CodeF:
+					if err := saveToFavorites(lastImage); err != nil {
+						fmt.Printf("Unable to save to favorites %v\n", err)
+					} else {
+						fmt.Printf("Saved %q to favorites\n", path.Base(lastImage))
+					}
 				case key.CodeR:
 					if e.Direction == key.DirRelease {
 						b, repaint = redrawImgs(w, s, b, imgs, i, &sz)
@@ -347,4 +363,22 @@ func redrawImgs(w screen.Window, s screen.Screen, curBuf screen.Buffer, imgs []i
 	}
 	w.Publish()
 	return b, true
+}
+
+func saveToFavorites(fname string) error {
+	input, err := ioutil.ReadFile(fname)
+	if err != nil {
+		return err
+	}
+	dirname := path.Dir(fname)
+	if strings.HasSuffix(dirname, "/samples") {
+		dirname = dirname[:len(dirname)-len("/samples")]
+	}
+	dirname = path.Join(dirname, "favorites")
+
+	if err := gart.MaybeCreateDir(dirname); err != nil {
+		return err
+	}
+	destinationFile := path.Join(dirname, path.Base(fname))
+	return ioutil.WriteFile(destinationFile, input, 0644)
 }

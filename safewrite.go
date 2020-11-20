@@ -7,6 +7,8 @@ import (
 	"path"
 )
 
+const tmpFolder = "./"
+
 // SafeWrite noisily saves to tmp file and then moves for gg
 func (s Seed) SafeWrite(ctx *Context, prefix, ext string) error {
 	fname := s.GetFilename(prefix, ext)
@@ -20,8 +22,12 @@ func (s Seed) SafeWrite(ctx *Context, prefix, ext string) error {
 
 // safeWrite writes to a temp file then renames atomically
 func safeWrite(ctx *Context, fname string) error {
+	if err := MaybeCreateDir(path.Dir(fname)); err != nil {
+		return err
+	}
+
 	ext := path.Ext(fname)
-	tmpfile, err := ioutil.TempFile("./", "gart.*"+ext)
+	tmpfile, err := ioutil.TempFile(tmpFolder, "gart.*"+ext)
 	if err != nil {
 		return err
 	}

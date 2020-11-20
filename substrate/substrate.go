@@ -61,12 +61,12 @@ func main() {
 	s.draw()
 
 	if true {
-		if err := g.SafeWrite(ctx, "substrate-", ".png"); err != nil {
+		if err := g.SafeWrite(ctx, "samples/substrate-", ".png"); err != nil {
 			fmt.Printf("Unable write image: %v\n", err)
 			return
 		}
 	} else {
-		if err := g.SafeWrite(ctx, "substrate-", ".svg"); err != nil {
+		if err := g.SafeWrite(ctx, "samples/substrate-", ".svg"); err != nil {
 			fmt.Printf("Unable write image: %v\n", err)
 			return
 		}
@@ -128,7 +128,7 @@ func (s *Substrate) inBounds(x, y int) bool {
 }
 
 func (s *Substrate) draw() {
-	for i := 0; i < 3000; i++ {
+	for i := 0; i < 2800; i++ {
 		// crack all cracks
 		for n := 0; n < len(s.cracks); n++ {
 			s.cracks[n].move(s)
@@ -240,8 +240,8 @@ func (c *Crack) move(s *Substrate) {
 	c.regionColor(s)
 
 	// draw black crack
-	//s.ctx.SetStrokeColor(color.RGBA{0, 0, 0, 85})
-	s.ctx.SetStrokeColor(c.color)
+	s.ctx.SetStrokeColor(color.RGBA{0, 0, 0, 85})
+	//s.ctx.SetStrokeColor(c.color)
 	s.ctx.LineTo(c.x+randRange(-z, z), c.y+randRange(-z, z))
 	s.ctx.Stroke()
 

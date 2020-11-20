@@ -2,6 +2,7 @@ package gart
 
 import (
 	"math"
+	"os"
 	"strings"
 )
 
@@ -57,4 +58,17 @@ func AbsInt(a int) int {
 		return -a
 	}
 	return a
+}
+
+// MaybeCreateDir creates a folder if needed.
+func MaybeCreateDir(dir string) error {
+	if dir == "" || dir == "." || dir == "./" {
+		return nil
+	}
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.Mkdir(dir, 0775); err != nil {
+			return err
+		}
+	}
+	return nil
 }
