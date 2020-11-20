@@ -274,10 +274,20 @@ func maybeStartDriver(newImgChan chan string) {
 				case key.CodeEscape, key.CodeQ:
 					return
 				case key.CodeF:
-					if err := saveToFavorites(lastImage); err != nil {
-						fmt.Printf("Unable to save to favorites %v\n", err)
-					} else {
-						fmt.Printf("Saved %q to favorites\n", path.Base(lastImage))
+					if e.Direction == key.DirRelease {
+						if err := saveToFavorites(lastImage); err != nil {
+							fmt.Printf("Unable to save to favorites : %v\n", err)
+						} else {
+							fmt.Printf("Saved %q to favorites\n", path.Base(lastImage))
+						}
+					}
+				case key.CodeD, key.CodeX, key.CodeDeleteForward:
+					if e.Direction == key.DirRelease {
+						if err := deleteImage(lastImage); err != nil {
+							fmt.Printf("Err: %v\n", err)
+						} else {
+							fmt.Printf("Deleted %q\n", path.Base(lastImage))
+						}
 					}
 				case key.CodeR:
 					if e.Direction == key.DirRelease {
@@ -363,6 +373,13 @@ func redrawImgs(w screen.Window, s screen.Screen, curBuf screen.Buffer, imgs []i
 	}
 	w.Publish()
 	return b, true
+}
+
+func deleteImage(fname string) error {
+	if _, err := os.Stat(fname); os.IsNotExist(err) {
+		return fmt.Errorf("file %q does not exist", fname)
+	}
+	return os.Remove(fname)
 }
 
 func saveToFavorites(fname string) error {

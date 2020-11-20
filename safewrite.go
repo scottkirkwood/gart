@@ -50,5 +50,10 @@ func safeWrite(ctx *Context, fname string) error {
 	} else {
 		return fmt.Errorf("unsupported file format %s", ext)
 	}
-	return os.Rename(tmpfile.Name(), fname)
+	// Note: the folders here need to be on the same drive
+	if err:= os.Rename(tmpfile.Name(), fname); err != nil {
+		return err
+	}
+
+	return os.Chmod(fname, 0664)
 }
